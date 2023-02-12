@@ -1,0 +1,34 @@
+
+pipeline {
+    agent {
+        image '<image_name>'
+        label '<label_name>'
+    }
+
+    parameters {
+        git name: 'BRANCH', type: 'PT_BRANCH', branchFilter: 'origin/release/(.*)', quickFilterEnabled: true
+    }
+
+    options {
+        buildDiscarded(logRotator(numToKeepStr: '10'))
+        skipStageAfterUnstable()
+    }
+
+    stages {
+       stage('Clean') {
+           echo 'Cleaning workspace ...'
+           cleanWs()
+       }
+
+       stage('Changelog') {
+           echo "Generating changelog report for ${BRANCH} ..."
+
+           git branch: "release/${BRANCH}", credentialsId: '<credentials_id>', url: '<git_url>'
+
+           script {
+             def summary = sh(script: "git log --merges --branches='${BRANCH}' --grep='Merge in' --format='%s %b' \$(git tag | head -1).. | grep -E '(bugfix|feature)' | awk -v message='<a href=\"<jira_url>/browse/%s\">[%s]</a>: %s<br>' 'match(\$0, /Pull request #[0-9]+: ([a-zA-Z0-9 _\\-:]+) Merge in <repo_name> from ((bugfix|feature)\\<jira_space>-[0-9]+) to/, a) {printf (message, a[2], a[2], a[1])}'", returnStdout: true).trim()
+             createSummary(icon: 'clipboard.png', text: summary) // /plugin/badge/images/completed.gif => to use other plugin icon/images
+           }
+       }
+    }
+}
