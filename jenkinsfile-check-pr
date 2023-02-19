@@ -1,0 +1,52 @@
+
+pipeline {
+    agent {
+        image '<image_name>'
+        label '<label_name>'
+    }
+
+    parameters {
+        git name: 'BRANCH', type: 'PT_BRANCH', branchFilter: 'origin/release/(.*)', quickFilterEnabled: true
+    }
+
+    triggers {
+        GenericTrigger(
+            genericVariables: [
+                [key: 'BRANCH', value: '$.pullRequest.fromRef.id'],
+                [key: 'TARGET', value: '$.pullRequest.toRef.id']
+            ],
+            token: '<token_identifier>',
+            regexpFilterText: '$TARGET',
+            regexpFilterExpression: '^refs/heads/release/.*'
+        )
+    }
+
+    options {
+        skipStageAfterUnstable()
+    }
+
+    stages {
+       stage('Clean') {
+           echo 'Cleaning workspace ...'
+           cleanWs()
+       }
+
+       stage('Check') {
+           echo "Build checking for branch ${BRANCH} ..."
+
+           git branch: "${BRANCH}.substring(11)}", credentialsId: '<credentials_id>', url: '<git_url>'
+
+           // call any build command or system integration (SonarQube, etc.)
+           sh "mvn clean package sonar:sonar \"-DprojectName=<project_name>\" \"-Dsonar.branch.name=$BRANCH\""
+       }
+    }
+
+    post {
+        always {
+            def = result = currentBuild.result ?: 'SUCCESS'
+            notifyBitbucket(stashServerBaseUrl: '<bitbucket_base_url>', credentialsId: '<credentials_id>',
+                projectKey: '<bitbucket_project_key>', buildStatus: "${result}", buildName: '<build_name>',
+                considerUnstableAsSuccess: false)
+        }
+    }
+}
